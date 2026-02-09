@@ -1,0 +1,20 @@
+# Pip dependencies
+pillow
+rasterio
+scikit-learn
+scipy
+joblib
+tqdm
+openpyxl
+geopandas
+tensorflow
+pandas
+numpy
+pyproj
+toolz
+dask
+shapely
+nomkl
+matplotlib
+fiona
+keras
