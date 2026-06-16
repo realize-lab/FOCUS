@@ -282,7 +282,7 @@ def calculate_probability(pixel, bands, central_pixel_pos, local_land_cover_prob
         distance_prob = 1 - (inverse_distance_sum / len(normalized_distances))
     
    
-    prob = 0.30 * land_cover_prob + 0.40 * distance_prob + 0.10*downstream_flow + 0.20*central_pixel_prob
+    prob = 0.20 * land_cover_prob + 0.40 * distance_prob + 0.30*downstream_flow + 0.10*central_pixel_prob
     prob = np.clip(prob, 0, 1)
    
     return prob
