@@ -1539,38 +1539,52 @@ lr_scheduler = PolyLrUpdaterHook(
 )
 
 def train_model3(model, train_loader, test_loader, criterion, optimizer, num_epochs=50, save_dir='./', save_best=True):
-    best_f1 = 0
+    os.makedirs(save_dir, exist_ok=True)
+    model = model.to(device)
 
-    for epoch in range(num_epochs):  # note: replaced runner.max_epochs
+    # --- EMA init ---
+    ema_decay = 0.999
+    ema_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
+    best_score = -1e9
+    best_path  = None
+
+    for epoch in range(num_epochs):
+        # -------- Train --------
         model.train()
         running_loss = 0.0
-
-        for batch_idx, data in enumerate(train_loader):
-            images = data['images'].to(device)  # [B, C, H, W]
-            labels = data['labels'].to(device)  # [B, H, W]
-            image_paths = data['image_paths']
+        for data in train_loader:
+            images = data['images'].to(device)
+            labels = data.get('labels', data['labels']).to(device)
 
             optimizer.zero_grad()
-
-            outputs, aux = model(images)  # [B, 1, H, W]
-
-        
-            loss2 = criterion(outputs, labels, image_paths=image_paths)  # BCEWithLogitsLoss expects logits
-            loss1 = criterion(aux, labels, image_paths=image_paths)
-            loss = loss2 + loss1
+            logits, aux = model(images)
+            loss = criterion(logits, labels, image_paths=data.get('image_paths', None)) \
+                 + criterion(aux,    labels, image_paths=data.get('image_paths', None))
             loss.backward()
             optimizer.step()
             scheduler.step()
+            running_loss += float(loss.item())
 
-            running_loss += loss.item()
+            # --- EMA update (after optimizer.step) ---
+            with torch.no_grad():
+                for k, v in model.state_dict().items():
+                    # only average floating-point tensors; copy others as-is
+                    if torch.is_floating_point(v):
+                        ema_state[k].mul_(ema_decay).add_(v.detach(), alpha=1.0 - ema_decay)
+                    else:
+                        ema_state[k] = v.detach().clone()
 
-        avg_train_loss = running_loss / len(train_loader)
-        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {avg_train_loss:.4f}')
+        avg_train_loss = running_loss / max(1, len(train_loader))
+        print(f'Epoch [{epoch+1}/{num_epochs}] Train Loss: {avg_train_loss:.4f}')
 
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        torch.save(model.state_dict(), os.path.join(save_dir, f'epoch2008_{epoch+1}.pth'))
-        print(f"Model checkpoint saved for epoch {epoch+1}!")
+        # save rolling (raw) checkpoint
+        epoch_path = os.path.join(save_dir, f'epoch2008_{epoch+1}.pth')
+        torch.save(model.state_dict(), epoch_path)
+
+        # save EMA checkpoint (state_dict-format)
+        epoch_ema_path = os.path.join(save_dir, f'epoch2008_{epoch+1}_ema.pth')
+        torch.save(ema_state, epoch_ema_path)
         
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
